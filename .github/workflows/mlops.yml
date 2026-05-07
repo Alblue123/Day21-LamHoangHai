@@ -43,9 +43,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Authenticate to GCP
-        run: |
-          echo '${{ secrets.CLOUD_CREDENTIALS }}' > /tmp/sa-key.json
-          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa-key.json" >> $GITHUB_ENV
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.CLOUD_CREDENTIALS }}
       - name: Pull data with DVC
         run: dvc pull
       - name: Train model
