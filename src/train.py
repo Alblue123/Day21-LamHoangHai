@@ -28,6 +28,10 @@ def train(
         accuracy (float): do chinh xac tren tap danh gia.
     """
 
+    # Tu dong dat tracking URI neu chua co (uu tien sqlite de on dinh)
+    if not os.environ.get("MLFLOW_TRACKING_URI"):
+        mlflow.set_tracking_uri("sqlite:///mlflow.db")
+
     # TODO 1: Doc du lieu huan luyen va danh gia
     df_train = pd.read_csv(data_path)
     df_eval  = pd.read_csv(eval_path)
