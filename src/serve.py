@@ -74,10 +74,12 @@ def predict(req: PredictRequest):
     # TODO 7: Goi model.predict([req.features]) de lay ket qua du doan.
     # pred = model.predict(...)
     pred = model.predict([req.features])
-
-    # TODO 8: Tra ve dict chua "prediction" (int) va "label" (string).
-    # Nhan tuong ung: 0 -> "thap", 1 -> "trung_binh", 2 -> "cao"
-    return {"prediction": pred[0], "label": "thap" if pred[0] == 0 else "trung_binh" if pred[0] == 1 else "cao"}
+    result = int(pred[0])  # Ép kiểu từ numpy.int64 sang int của Python
+    
+    return {
+        "prediction": result, 
+        "label": "thap" if result == 0 else "trung_binh" if result == 1 else "cao"
+    }
 
 
 if __name__ == "__main__":
