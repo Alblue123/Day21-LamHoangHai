@@ -2,4 +2,3 @@
     remote = myremote
 ['remote "myremote"']
     url = gs://alblue_bucket/dvc
-    credentialpath = ../sa-key.json
