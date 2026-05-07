@@ -14,6 +14,8 @@ jobs:
   test:
     name: Unit Test
     runs-on: ubuntu-latest
+    env:
+      MLFLOW_TRACKING_URI: sqlite:///mlflow.db
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -31,6 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       accuracy: ${{ steps.read_metrics.outputs.accuracy }}
+    env:
+      MLFLOW_TRACKING_URI: sqlite:///mlflow.db
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
