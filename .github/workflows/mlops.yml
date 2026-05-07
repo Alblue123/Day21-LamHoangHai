@@ -7,6 +7,7 @@ on:
       - 'data/**.dvc'
       - 'src/**.py'
       - 'params.yaml'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 jobs:
@@ -34,7 +35,9 @@ jobs:
     outputs:
       accuracy: ${{ steps.read_metrics.outputs.accuracy }}
     env:
-      MLFLOW_TRACKING_URI: sqlite:///mlflow.db
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+      MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+      MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -69,13 +72,20 @@ jobs:
           bucket = storage_client.bucket(bucket_name)
           blob = bucket.blob("models/latest/model.pkl")
           blob.upload_from_filename("models/model.pkl")
-          print(f"Model uploaded to gs://{bucket_name}/models/latest/model.pkl")
+          
+          # Upload metrics for comparison in next runs (Bonus 4)
+          blob_metrics = bucket.blob("metadata/latest_metrics.json")
+          blob_metrics.upload_from_filename("outputs/metrics.json")
+          
+          print(f"Model and metrics uploaded to gs://{bucket_name}")
           EOF
       - name: Save metrics as artifact
         uses: actions/upload-artifact@v4
         with:
           name: metrics
-          path: outputs/metrics.json
+          path: |
+            outputs/metrics.json
+            outputs/report.txt
 
   # JOB 3: Eval Gate
   eval:
@@ -83,14 +93,45 @@ jobs:
     needs: train
     runs-on: ubuntu-latest
     steps:
-      - name: Check accuracy threshold
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.CLOUD_CREDENTIALS }}
+      - name: Download previous metrics
+        continue-on-error: true
+        env:
+          CLOUD_BUCKET: ${{ secrets.CLOUD_BUCKET }}
+        run: |
+          gcloud storage cp gs://${CLOUD_BUCKET}/metadata/latest_metrics.json old_metrics.json || echo "No previous metrics found."
+      - name: Check accuracy threshold and comparison
         run: |
           python - <<'EOF'
-          acc = float("${{ needs.train.outputs.accuracy }}")
-          if acc < 0.65:
-              print(f"FAILED: Accuracy {acc:.4f} < 0.65. Ngung trien khai.")
+          import json
+          import os
+          
+          new_acc = float("${{ needs.train.outputs.accuracy }}")
+          
+          # 1. Check absolute threshold (existing logic)
+          if new_acc < 0.65:
+              print(f"FAILED: Accuracy {new_acc:.4f} < 0.65. Ngung trien khai.")
               exit(1)
-          print(f"PASSED: Accuracy {acc:.4f} >= 0.65. Tiep tuc trien khai.")
+          
+          # 2. Compare with old accuracy (Bonus 4)
+          if os.path.exists("old_metrics.json"):
+              with open("old_metrics.json", "r") as f:
+                  old_data = json.load(f)
+                  old_acc = float(old_data.get("accuracy", 0))
+              
+              print(f"Old Accuracy: {old_acc:.4f} | New Accuracy: {new_acc:.4f}")
+              if new_acc < old_acc:
+                  print(f"FAILED: Mo hinh moi ({new_acc:.4f}) kem hon mo hinh cu ({old_acc:.4f}). Huy deploy.")
+                  exit(1)
+              else:
+                  print("PASSED: Mo hinh moi tot bang hoac hon mo hinh cu.")
+          else:
+              print("No previous metrics found. First time deploy.")
+          
+          print(f"SUCCESS: Accuracy {new_acc:.4f} thoa man moi dieu kien.")
           EOF
 
   # JOB 4: Deploy
@@ -99,6 +140,15 @@ jobs:
     needs: eval
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: Copy code to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          source: "src/serve.py"
+          target: "/home/${{ secrets.VM_USER }}/"
       - name: SSH and Restart Service
         uses: appleboy/ssh-action@v1.0.3
         with:
